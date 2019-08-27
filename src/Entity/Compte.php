@@ -63,12 +63,12 @@ class Compte
         return $this;
     }
 
-    public function getSolde(): ?string
+    public function getSolde(): ?int
     {
         return $this->solde;
     }
 
-    public function setSolde(string $solde): self
+    public function setSolde(int $solde): self
     {
         $this->solde = $solde;
 

@@ -14,7 +14,7 @@ class DepotType extends AbstractType
         $builder
             ->add('montant')
             //->add('dateDepot')
-            ->add('user')
+            //->add('user')
             ->add('compte')
         ;
     }

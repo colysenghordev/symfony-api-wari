@@ -10,9 +10,14 @@ use App\Form\DepotType;
 use App\Form\CompteType;
 use App\Entity\Partenaire;
 use App\Form\PartenaireType;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Serializer\SerializerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\IsGranted;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Security\Core\Encoder\UserPasswordEncoderInterface;
 
@@ -23,8 +28,9 @@ class SecurityController extends AbstractController
 {
     /**
      * @Route("/register", name="register", methods={"POST"})
+     * @IsGranted("ROLE_Super-Admin")
      */
-    public function register(Request $request, UserPasswordEncoderInterface $passwordEncoder)
+    public function register(Request $request, UserPasswordEncoderInterface $passwordEncoder, EntityManagerInterface $entityManager, SerializerInterface $serializer, ValidatorInterface $validator)
     {
         $partenaire = new Partenaire();
         $form = $this->createForm(PartenaireType::class, $partenaire);
@@ -38,23 +44,7 @@ class SecurityController extends AbstractController
         $data = $request->request->all();
         $form->submit($data);
         $user->setPartenaire($partenaire);
-            $roles=[];
-            $profil=$user->getProfil()->getLibelle();
-            if($profil =="Administrateur général"){
-                $roles=["ROLE_Super-Admin"];
-            }
-            elseif($profil == "Administrateur secondaire"){
-                $roles=["ROLE_ADMIN"];
-            }
-            elseif($profil == "Caissier"){
-                $roles=["ROLE_Caissier"];
-            }
-            elseif($profil == "Partenaire"){
-                $roles=["ROLE_Partenaire"];
-            }
-            elseif($profil == "Utilisateur simple"){
-                $roles=["ROLE_Utilisateur simple"];
-            }; 
+        $roles=['ROLE_Partenaire'];
         $user->setRoles($roles);
 
         $compte = new Compte();
@@ -74,6 +64,14 @@ class SecurityController extends AbstractController
         $depot->setUser($user);
         $depot->setCompte($compte);
         $depot->setDateDepot(new \DateTime);
+
+        $errors = $validator->validate($user);
+        if(count($errors)) {
+            $errors = $serializer->serialize($errors, 'json');
+            return new Response($errors, 500, [
+                'Content-Type' => 'application/json'
+            ]);
+        }
 
         if ($form->isSubmitted()) {
             $password = $passwordEncoder->encodePassword($user, $user->getPassword());
@@ -99,5 +97,55 @@ class SecurityController extends AbstractController
             'message' => 'Vérifier les clés de renseignement'
         ];
         return new JsonResponse($data, 500);
+    }
+     /**
+     * @Route("/login", name="login", methods={"POST"})
+     */
+    public function login(Request $request)
+    {
+        $user=$this->getUser();
+        return $this->json([
+            'username'=>$user->getUsername(),
+            'roles'=>$user->getRoles()]
+        );
+    }
+
+    /**
+     * @Route("/caissier_admin_secondaire", name="ajout caissier ou partenaire", methods={"POST"})
+     * @IsGranted("ROLE_Super-Admin")
+     */
+    public function caissier_admin_secondaire(Request $request, UserPasswordEncoderInterface $passwordEncoder)
+    {
+        $user  = new User();
+
+        $form  = $this->createForm(UserType::class, $user);
+        $form->handleRequest($request);
+        $data = $request->request->all();
+        $form->submit($data);
+
+            $roles=[];
+            $profil=$user->getProfil()->getLibelle();
+            if($profil == "Administrateur secondaire"){
+                $roles=["ROLE_ADMIN"];
+            }
+            elseif($profil == "Caissier"){
+                $roles=["ROLE_Caissier"];
+            }; 
+        $user->setRoles($roles);;
+
+        if ($form->isSubmitted()) {
+            $password = $passwordEncoder->encodePassword($user, $user->getPassword());
+            $user->setPassword($password);
+
+            $entityManager = $this->getDoctrine()->getManager();
+            $entityManager->persist($user);
+            $entityManager->flush();
+        
+            $data = [
+            'status' => 201,
+            'message' => 'L\utilisateur a bien été ajouté'
+            ];
+            return new JsonResponse($data, 201);
+        }
     }
 }
